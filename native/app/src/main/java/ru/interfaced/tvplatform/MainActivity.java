@@ -103,6 +103,7 @@ public class MainActivity extends Activity {
         webSettings.setAllowUniversalAccessFromFileURLs(BuildConfig.USE_BUNDLED_HTML);
 
         webView.setInitialScale(1);
+        webSettings.setMinimumFontSize(1);
         webSettings.setLoadWithOverviewMode(true);
         webSettings.setUseWideViewPort(true);
         webSettings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.SINGLE_COLUMN);

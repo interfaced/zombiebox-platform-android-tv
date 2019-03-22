@@ -3,9 +3,15 @@
 ## Planned
  * Playback rate, Aspect ratio and other fixes for 2.0.0 regression.
 
+## 3.0.0-alpha.1 (22.03.2019)
+
+Platform code migrated to ES6 modules.
+
+Compatibility with ZombieBox 2.0. 
+
 ## 2.1.0 (22.03.2019)
 
-Compatibility with ZombieBox 1.0; Android dependencies brought up to date 
+Compatibility with ZombieBox 1.0; Android dependencies brought up to date. 
 
 ### Breaking Changes
 * `getSoftwareVersion` device API method renamed to `getAndroidVersion`.

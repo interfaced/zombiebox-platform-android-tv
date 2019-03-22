@@ -90,7 +90,7 @@ class PlatformAndroid {
 		}
 
 		if (!config.namespace) {
-			config.namespace = buildConfig.appNamespace;
+			config.namespace = buildConfig.project.name;
 			console.warn(`Namespace not set, using "${config.namespace}"`.yellow);
 		}
 
@@ -163,7 +163,7 @@ class PlatformAndroid {
 		};
 
 		const properties = [
-			`dimension "zb-project"`,
+			'dimension "zb-project"'
 		];
 		Object.keys(config).forEach((property) => {
 			const value = config[property];
@@ -253,7 +253,7 @@ class PlatformAndroid {
 			.then((res) => {
 				warnings = res;
 			})
-			.then(() => buildHelper.copyCustomWebFiles(distDir))
+			.then(() => buildHelper.copyStaticFiles(distDir))
 			.then(() => warnings);
 	}
 
