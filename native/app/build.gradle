@@ -1,0 +1,58 @@
+apply plugin: 'com.android.application'
+
+
+android {
+    compileSdkVersion 28
+
+    compileOptions {
+        sourceCompatibility 1.8
+        targetCompatibility 1.8
+    }
+
+    defaultConfig {
+        minSdkVersion 21
+        targetSdkVersion 28
+
+        versionCode 1
+        versionName "1.0"
+
+        applicationId "ru.interfaced.tvplatform"
+        resValue "string", "app_name", "Interfaced Android TV Platform"
+        resValue "color", "tvLauncherColor", "#000000"
+
+        buildConfigField 'Boolean', 'USE_BUNDLED_HTML', 'true'
+        buildConfigField 'String', 'APPLICATION_URL', '""'
+
+        buildConfigField 'Boolean', 'WEBVIEW_DEBUG', 'false'
+    }
+
+    buildTypes {
+        debug {
+
+        }
+
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            zipAlignEnabled true
+        }
+    }
+
+    flavorDimensions "zb-project"
+
+    productFlavors {
+        platform {
+            dimension "zb-project"
+
+            buildConfigField 'Boolean', 'WEBVIEW_DEBUG', 'true'
+        }
+
+//[FLAVOR_INSERTION_POINT]//
+
+    }
+}
+
+dependencies {
+    implementation 'com.android.support:leanback-v17:28.0.0'
+    implementation 'com.google.android.exoplayer:exoplayer:2.9.6'
+}

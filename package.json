@@ -1,0 +1,25 @@
+{
+  "name": "zombiebox-platform-android-tv",
+  "version": "2.1.0",
+  "scripts": {
+    "lint": "eslint index.js lib externs",
+    "build-tester": "build-zb-platform-tester --buildPath=tester/dist --configPath=tester/config.js"
+  },
+  "dependencies": {
+    "colors": "^1.3.3",
+    "fs-extra-promise": "^1.0.1",
+    "sharp": "^0.22.0"
+  },
+  "devDependencies": {
+    "eslint": "^5.15.3",
+    "eslint-config-interfaced": "^1.5.0",
+    "eslint-plugin-goog": "^1.0.0",
+    "eslint-plugin-interfaced": "^1.6.1",
+    "eslint-plugin-node": "^8.0.1",
+    "zb-platform-test": "^1.2.0",
+    "zombiebox": "^1.0.1"
+  },
+  "peerDependencies": {
+    "zombiebox": "^1.0.1"
+  }
+}

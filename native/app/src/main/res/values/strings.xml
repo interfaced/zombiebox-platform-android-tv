@@ -1,0 +1,4 @@
+<resources>
+    <string name="player_interface">Player</string>
+    <string name="device_interface">Device</string>
+</resources>
