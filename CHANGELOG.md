@@ -3,6 +3,12 @@
 ## Planned
  * Playback rate, Aspect ratio and other fixes for 2.0.0 regression.
 
+## 3.0.0 (10.07.2019)
+
+* License changed to MIT
+* Compatibility with ZombieBox 2.0. 
+* No changes in code since `alpha.1`
+
 ## 3.0.0-alpha.1 (22.03.2019)
 
 Platform code migrated to ES6 modules.

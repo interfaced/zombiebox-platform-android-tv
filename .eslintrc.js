@@ -8,17 +8,21 @@ function resolveModulePath(packageName) {
 module.exports = {
 	extends: 'interfaced',
 	overrides: [
-			{
-				files: ['lib/**/*.js'],
-				settings: {
-					'import/resolver': {
-						alias: [
-							['zb', resolveModulePath('zombiebox')]
-						]
-					}
-				},
-				...require('eslint-config-interfaced/overrides/esm')
+		{
+			files: ['externs/**/*.js'],
+			...require('eslint-config-interfaced/overrides/externs')
+		},
+		{
+			files: ['lib/**/*.js'],
+			settings: {
+				'import/resolver': {
+					alias: [
+						['zb', resolveModulePath('zombiebox')]
+					]
+				}
 			},
+			...require('eslint-config-interfaced/overrides/esm')
+		},
 		{
 			files: ['lib/**/*.js'],
 			rules: {
@@ -29,5 +33,13 @@ module.exports = {
 			files: ['.eslintrc.js', 'index.js', 'tester/*.js'],
 			...require('eslint-config-interfaced/overrides/node')
 		},
+		{
+			files: ['.eslintrc.js', 'index.js', 'tester/*.js'],
+			rules: {
+				'node/no-unsupported-features/es-builtins': ["error", { "version": ">=8.9" }],
+				'node/no-unsupported-features/es-syntax': ["error", { "version": ">=8.9" }],
+				'node/no-unsupported-features/node-builtins': ["error", { "version": ">=8.9" }]
+			}
+		}
 	]
 };

@@ -1,20 +1,20 @@
-/* eslint-disable no-console */
-
-require('colors');
-
 const childProcess = require('child_process');
-const fsp = require('fs-extra-promise');
+const fse = require('fs-extra');
+const klaw = require('klaw');
 const path = require('path');
 const sharp = require('sharp');
+const chalk = require('chalk');
+const {AbstractPlatform, Application} = require('zombiebox');
 
 
 /**
- * @implements {ZBPlatform}
  */
-class PlatformAndroid {
+class PlatformAndroid extends AbstractPlatform {
 	/**
 	 */
 	constructor() {
+		super();
+
 		/**
 		 * @const {string}
 		 * @protected
@@ -32,7 +32,7 @@ class PlatformAndroid {
 	/**
 	 * @override
 	 */
-	getPublicDir() {
+	getSourcesDir() {
 		return path.join(__dirname, 'lib');
 	}
 
@@ -41,32 +41,42 @@ class PlatformAndroid {
 	 */
 	getConfig() {
 		return {
-			'compilation': {
-				'externs': [
-					path.join(__dirname, 'externs', 'player.js'),
-					path.join(__dirname, 'externs', 'device.js')
-				]
+			platforms: {
+				android: {
+					appId: undefined,
+					versionCode: undefined,
+					versionName: undefined,
+					namespace: undefined,
+					name: 'ZombieBox',
+					launcherColor: undefined,
+					useBundledHTML: true,
+					applicationURL: undefined,
+					webViewDebug: false,
+					storeRelease: false,
+					resPath: undefined
+				}
 			},
-			'android': {
-				'appId': undefined,
-				'versionCode': undefined,
-				'versionName': undefined,
-				'namespace': undefined,
-				'name': 'ZombieBox',
-				'launcherColor': undefined,
-				'useBundledHTML': true,
-				'applicationURL': undefined,
-				'webViewDebug': false,
-				'storeRelease': false,
-				'resPath': undefined
-			}
+			include: [
+				{
+					name: 'Android TV externs',
+					externs: [
+						path.join(__dirname, 'externs', 'player.js'),
+						path.join(__dirname, 'externs', 'device.js')
+					]
+				}
+			]
 		};
 	}
 
 	/**
 	 * @override
 	 */
-	buildApp(zbApp, distDir) {
+	buildCLI() {/* do nothing */}
+
+	/**
+	 * @override
+	 */
+	async buildApp(application, distDir) {
 		/**
 		 * @param {number} len
 		 * @return {string}
@@ -76,78 +86,75 @@ class PlatformAndroid {
 			.map(() => String.fromCharCode(Math.random() * 26 + 97))
 			.join('');
 
-		const buildConfig = zbApp.getAllConfigs().build;
-		const config = buildConfig.getCustomValue('android');
+		const buildConfig = application.getConfig();
+		const config = buildConfig.platforms.android;
 
 		const buildDir = path.join(distDir, 'src');
 
 		if (config.storeRelease) {
-			console.warn('Building unsigned release apk. It will not install unless signed.'.yellow);
+			console.warn(chalk.yellow('Building unsigned release apk. It will not install unless signed.'));
 
 			if (config.webViewDebug) {
-				console.warn('Building release with debug enabled'.red);
+				console.warn(chalk.red('Building release with debug enabled'));
 			}
 		}
 
 		if (!config.namespace) {
 			config.namespace = buildConfig.project.name;
-			console.warn(`Namespace not set, using "${config.namespace}"`.yellow);
+			console.warn(chalk.yellow(`Namespace not set, using "${config.namespace}"`));
 		}
 
 		if (config.namespace.startsWith('test')) {
 			config.namespace = createRandomString();
-			console.warn(`Namespace could not start with "test", using ${config.namespace}`.yellow);
+			console.warn(chalk.yellow(`Namespace could not start with "test", using ${config.namespace}`));
 		}
 
 		if (!config.versionName) {
-			config.versionName = zbApp.getAppVersion();
-			console.warn(`Version name not set, using "${config.versionName}"`.yellow);
+			config.versionName = application.getAppVersion();
+			console.warn(chalk.yellow(`Version name not set, using "${config.versionName}"`));
 		}
 
 		if (!config.versionCode && config.storeRelease) {
-			console.error('Version code is not set'.red);
+			console.error(chalk.red('Version code is not set'));
 			return Promise.reject('No versionCode');
 		}
 
 		if (!config.appId) {
 			if (config.storeRelease) {
-				console.error(`Application id not set`.red);
+				console.error(chalk.red(`Application id not set`));
 				return Promise.reject();
 			}
 
 			config.appId = `com.zombiebox.${config.namespace}.${createRandomString()}`;
-			console.warn(`Application id not set, using "${config.appId}"`.yellow);
+			console.warn(chalk.yellow(`Application id not set, using "${config.appId}"`));
 		}
 
-		let zbBuildWarnings = '';
 
-		return fsp.emptyDirAsync(buildDir)
-			.then(() => this._cloneSources(buildDir))
-			.then(() => this._applyBuildConfig(config, buildDir))
-			.then(() => this._copyResources(zbApp, config, buildDir))
-			.then(() => this._markDebugBuild(config, buildDir))
-			.then(() => this._compileZbApplication(zbApp, distDir, config, buildDir))
-			.then((warnings) => {
-				zbBuildWarnings = warnings;
-			})
-			.then(() => this._compileApk(config, buildDir, config.namespace))
-			.then(() => this._copyApk(config, buildDir, distDir))
-			.then(() => zbBuildWarnings);
+		await fse.emptyDir(buildDir);
+		await this._cloneSources(buildDir);
+		await this._applyBuildConfig(config, buildDir);
+		await this._copyResources(application, config, buildDir);
+		await this._markDebugBuild(config, buildDir);
+		const zbBuildWarnings = await this._compileZbApplication(application, distDir, config, buildDir);
+		await this._compileApk(config, buildDir, config.namespace);
+		await this._copyApk(config, buildDir, distDir);
+
+		return zbBuildWarnings;
 	}
 
 	/**
 	 * Copy apk sources
 	 * @param {string} targetPath
-	 * @return {IThenable}
+	 * @return {Promise}
 	 * @protected
 	 */
-	_cloneSources(targetPath) {
-		return fsp.copyAsync(path.join(__dirname, 'native'), targetPath);
+	async _cloneSources(targetPath) {
+		await fse.copy(path.join(__dirname, 'native'), targetPath);
 	}
 
 	/**
 	 * @param {Object} config
-	 * @return {IThenable<string>}
+	 * @return {Promise<string>}
 	 * @protected
 	 */
 	_generateBuildFlavor(config) {
@@ -165,13 +172,12 @@ class PlatformAndroid {
 		const properties = [
 			'dimension "zb-project"'
 		];
-		Object.keys(config).forEach((property) => {
-			const value = config[property];
 
+		for (const [property, value] of Object.entries(config)) {
 			if (propertyValues.hasOwnProperty(property) && value !== undefined) {
 				properties.push(propertyValues[property]);
 			}
-		});
+		}
 
 		return `${config.namespace} {\n\t${properties.join('\n\t')}\n}`;
 	}
@@ -180,64 +186,57 @@ class PlatformAndroid {
 	 * Writes flavor config to sources
 	 * @param {Object} config
 	 * @param {string} buildDir
-	 * @return {IThenable}
+	 * @return {Promise}
 	 * @protected
 	 */
-	_applyBuildConfig(config, buildDir) {
+	async _applyBuildConfig(config, buildDir) {
 		const flavor = this._generateBuildFlavor(config);
 		const gradleConfig = path.join(buildDir, 'app', 'build.gradle');
 
-		return fsp.readFileAsync(
-			gradleConfig,
-			{
-				encoding: 'utf8'
-			}
-		).then((data) => fsp.writeFileAsync(
-			gradleConfig,
-			data.replace(this.CONFIG_REPLACE_PATTERN, flavor))
-		);
+		const data = await fse.readFile(gradleConfig, 'utf-8');
+		await fse.writeFile(gradleConfig, data.replace(this.CONFIG_REPLACE_PATTERN, flavor));
 	}
 
 	/**
 	 * Copy icons from config paths
-	 * @param {ZBApplication} zbApp
+	 * @param {Application} application
 	 * @param {Object} config
 	 * @param {string} buildDir
-	 * @return {IThenable}
+	 * @return {Promise}
 	 * @protected
 	 */
-	_copyResources(zbApp, config, buildDir) {
+	async _copyResources(application, config, buildDir) {
 		if (!config.resPath) {
-			console.warn('No resources set, will use default zb resources'.yellow);
-			return Promise.resolve();
+			console.warn(chalk.yellow('No resources set, will use default zb resources'));
+			return;
 		}
 
-		const configRoot = zbApp.getPathInfo().getRootDir();
+		const configRoot = application.getPathHelper().getRootDir();
 		const resPath = path.resolve(configRoot, config.resPath);
 		const targetResPath = path.join(buildDir, 'app', 'src', config.namespace, 'res');
 
-		let promise = fsp.copyAsync(resPath, targetResPath);
+		await fse.copy(resPath, targetResPath);
 
 		const bannerPath = path.join(resPath, 'drawable', 'banner.png');
-		if (!fsp.existsSync(bannerPath)) {
-			console.warn('Banner image is not set. Will fall back to zb image'.yellow);
+
+		if (!await fse.pathExists(bannerPath)) {
+			console.warn(chalk.yellow('Banner image is not set. Will fall back to zb image'));
+
 			const fallbackBanner = path.join(buildDir, 'app', 'src', 'main', 'res', 'drawable', 'banner.png');
 			const targetBannerPath = path.join(targetResPath, 'drawable', 'banner.png');
-			promise = promise.then(() => fsp.copyAsync(fallbackBanner, targetBannerPath));
+			await fse.copy(fallbackBanner, targetBannerPath);
 		}
-
-		return promise;
 	}
 
 	/**
-	 * @param {ZBApplication} zbApp
+	 * @param {Application} application
 	 * @param {string} distDir
 	 * @param {Object} config
 	 * @param {string} buildDir
-	 * @return {IThenable}
+	 * @return {Promise}
 	 * @protected
 	 */
-	_compileZbApplication(zbApp, distDir, config, buildDir) {
+	async _compileZbApplication(application, distDir, config, buildDir) {
 		let zbAppPath;
 		if (config.useBundledHTML) {
 			zbAppPath = path.join(buildDir, 'app', 'src', config.namespace, 'assets', 'html', 'index.html');
@@ -245,78 +244,72 @@ class PlatformAndroid {
 			zbAppPath = path.join(buildDir, 'index.html');
 		}
 
-		const buildHelper = zbApp.getBuildHelper();
-		let warnings = '';
+		const buildHelper = application.getBuildHelper();
 
-		return fsp.ensureDirAsync(path.dirname(zbAppPath))
-			.then(() => buildHelper.writeIndexHTML(zbAppPath))
-			.then((res) => {
-				warnings = res;
-			})
-			.then(() => buildHelper.copyStaticFiles(distDir))
-			.then(() => warnings);
+		await fse.ensureDir(path.dirname(zbAppPath));
+		const warnings = await buildHelper.writeIndexHTML(zbAppPath);
+		await buildHelper.copyStaticFiles(distDir);
+		return warnings;
 	}
 
 	/**
 	 * Apply distinctly noticeable overlay to app banner when building in debug configuration
 	 * @param {Object} config
 	 * @param {string} buildDir
-	 * @return {IThenable}
+	 * @return {Promise}
 	 * @protected
 	 */
-	_markDebugBuild(config, buildDir) {
+	async _markDebugBuild(config, buildDir) {
 		if (config.storeRelease || config.resPath === undefined) {
-			return Promise.resolve();
+			return;
 		}
 
 		const overlay = path.join(buildDir, 'app', 'src', 'main', 'res', 'drawable', 'debug.png');
 		const baseResourcesPath = path.join(buildDir, 'app', 'src', config.namespace, 'res');
 
-		return fsp.readdirAsync(baseResourcesPath)
-			.then((fileNames) =>
-				fileNames.filter((name) => name.startsWith('drawable'))
-			)
-			.then((fileNames) =>
-				fileNames.filter((name) => fsp.statSync(path.join(baseResourcesPath, name)).isDirectory())
-			)
-			.then((drawableDirNames) => {
-				const promises = [];
+		let resolvePrimer;
+		const primer = new Promise((resolve) => (resolvePrimer = resolve));
+		const promises = [primer];
 
-				drawableDirNames.forEach((dir) => {
-					const bannerPath = path.join(baseResourcesPath, dir, 'banner.png');
-					if (fsp.existsSync(bannerPath)) {
-						promises.push(sharp(bannerPath)
-							.overlayWith(overlay)
-							.toFile(bannerPath + '~')
-							.then(() => fsp.renameAsync(bannerPath + '~', bannerPath))
-						);
-					}
-				});
+		klaw(baseResourcesPath, {
+			depthLimit: 1,
+			filter: (filename) => path.basename(filename).startsWith('drawable')
+		})
+			.on('data', async(item) => {
+				const bannerPath = path.join(baseResourcesPath, item.path, 'banner.png');
+				if (await fse.exists(bannerPath)) {
+					promises.push(sharp(bannerPath)
+						.overlayWith(overlay)
+						.toFile(bannerPath + '~')
+						.then(() => fse.rename(bannerPath + '~', bannerPath))
+					);
+				}
+			})
+			.on('end', resolvePrimer);
 
-				return Promise.all(promises);
-			});
+		await Promise.all(promises);
 	}
 
 	/**
 	 * @param {Object} config
 	 * @param {string} root
 	 * @param {string} flavor
-	 * @return {IThenable}
+	 * @return {Promise}
 	 * @protected
 	 */
-	_compileApk(config, root, flavor) {
+	async _compileApk(config, root, flavor) {
 		const gradlePath = path.join(root, 'gradlew');
 
 		const buildType = config.storeRelease ? 'Release' : 'Debug';
 
-		console.log(`Compiling ${flavor} ${buildType} apk`.green);
+		console.log(chalk.green(`Compiling ${flavor} ${buildType} apk`));
 
 		const capitalize = (string) => string.charAt(0).toUpperCase() + string.slice(1);
 
-		const runGradle = (args) => {
-			console.log('Running', `gradle ${args[0]}`.yellow);
+		const runGradle = async(args) => {
+			console.log(chalk.yellow('Running', `gradle ${args[0]}`));
 
-			return new Promise((resolve, reject) => {
+			await new Promise((resolve, reject) => {
 				const gradleProcess = childProcess.execFile(
 					gradlePath,
 					args,
@@ -331,19 +324,18 @@ class PlatformAndroid {
 			});
 		};
 
-		return runGradle(['clean']).then(
-			() => runGradle(['assemble' + capitalize(flavor) + buildType])
-		);
+		await runGradle(['clean']);
+		await runGradle(['assemble' + capitalize(flavor) + buildType]);
 	}
 
 	/**
 	 * @param {Object} config
 	 * @param {string} buildDir
 	 * @param {string} distDir
-	 * @return {IThenable}
+	 * @return {Promise}
 	 * @protected
 	 */
-	_copyApk(config, buildDir, distDir) {
+	async _copyApk(config, buildDir, distDir) {
 		const debugBuild = path.join(
 			buildDir, 'app', 'build', 'outputs', 'apk', config.namespace, 'debug',
 			`app-${config.namespace}-debug.apk`
@@ -362,15 +354,11 @@ class PlatformAndroid {
 		const debugTarget = path.join(distDir, filename + '-debug.apk');
 		const releaseTarget = path.join(distDir, filename + '-release-unsigned.apk');
 
-		const promises = [];
-
-		if (config.storeRelease && fsp.existsSync(releaseBuild)) {
-			promises.push(fsp.copyAsync(releaseBuild, releaseTarget));
-		} else if (fsp.existsSync(debugBuild)) {
-			promises.push(fsp.copyAsync(debugBuild, debugTarget));
+		if (config.storeRelease && await fse.exists(releaseBuild)) {
+			await fse.copy(releaseBuild, releaseTarget);
+		} else if (await fse.exists(debugBuild)) {
+			await fse.copy(debugBuild, debugTarget);
 		}
-
-		return Promise.all(promises);
 	}
 }
 

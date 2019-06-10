@@ -1,8 +1,0 @@
-{
-  "rules": {
-    "no-unused-vars": "off",
-    "interfaced/valid-jsdoc": "off",
-    "interfaced/no-unused-expressions": "off",
-    "interfaced/no-empty-method": "off"
-  }
-}
