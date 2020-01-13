@@ -37,7 +37,7 @@ class AndroidPlayerAPI {
 
 	/**
 	 * Content type to try ro render video as
-	 * @param {string} type - if not set or set to 'auto', player will try to guess from url extension
+	 * @param {string} type If not set or set to 'auto', player will try to guess from url extension
 	 */
 	setMediaType(type) {}
 
@@ -54,9 +54,9 @@ class AndroidPlayerAPI {
 	/**
 	 * Hook to be declared
 	 * @param {string} event
-	 * @param {...?string} var_args
+	 * @param {...?string} args
 	 */
-	onEvent(event, var_args) {}
+	onEvent(event, args) {}
 
 	/**
 	 * @return {number} - integer
@@ -74,7 +74,7 @@ class AndroidPlayerAPI {
 	getCurrentPosition() {}
 
 	/**
-	 * @param {number} time - integer
+	 * @param {number} time Integer
 	 */
 	seekTo(time) {}
 
@@ -84,7 +84,7 @@ class AndroidPlayerAPI {
 	getVolume() {}
 
 	/**
-	 * @param {number} percent - integer from 0 to 100
+	 * @param {number} percent Integer from 0 to 100
 	 */
 	setVolume(percent) {}
 
@@ -99,34 +99,34 @@ class AndroidPlayerAPI {
 	setMuted(mute) {}
 
 	/**
-	 * @param {number} x - integer
-	 * @param {number} y - integer
-	 * @param {number} width - integer
-	 * @param {number} height - integer
+	 * @param {number} x Integer
+	 * @param {number} y Integer
+	 * @param {number} width Integer
+	 * @param {number} height Integer
 	 */
 	setArea(x, y, width, height) {}
 
 	/**
-	 * @param {string} orientation - One of: LANDSCAPE|LANDSCAPE_INVERSE|PORTRAIT|PORTRAIT_INVERSE
+	 * @param {string} orientation One of: LANDSCAPE|LANDSCAPE_INVERSE|PORTRAIT|PORTRAIT_INVERSE
 	 */
 	setOrientation(orientation) {}
 
 	/**
 	 * @deprecated - This method is expected to misbehave
-	 * @param {string} type - One of: FIT|FILL|DEFAULT|FIXED_HEIGHT|FIXED_WIDTH|FIXED_MIN|FIXED_MAX
+	 * @param {string} type One of: FIT|FILL|DEFAULT|FIXED_HEIGHT|FIXED_WIDTH|FIXED_MIN|FIXED_MAX
 	 */
 	setResizeMode(type) {}
 
 	/**
 	 * @deprecated - This method is expected to misbehave
-	 * @param {number} ratio - float
+	 * @param {number} ratio Float
 	 */
 	setAspectRatio(ratio) {}
 
 	/**
 	 * Sets video rendering engine type.
 	 * Can only be used after video is created, but before playback is started.
-	 * @param {string} type - One of: SURFACE_VIEW|TEXTURE_VIEW
+	 * @param {string} type One of: SURFACE_VIEW|TEXTURE_VIEW
 	 */
 	setVideoType(type) {}
 

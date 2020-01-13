@@ -1,44 +1,34 @@
-const {join, dirname} = require('path');
-
-function resolveModulePath(packageName) {
-	const packageInfoPath = require.resolve(`${packageName}/package.json`);
-	return join(dirname(packageInfoPath), require(packageInfoPath).module);
-}
-
 module.exports = {
 	extends: 'interfaced',
 	overrides: [
 		{
 			files: ['externs/**/*.js'],
-			...require('eslint-config-interfaced/overrides/externs')
-		},
-		{
-			files: ['lib/**/*.js'],
-			settings: {
-				'import/resolver': {
-					alias: [
-						['zb', resolveModulePath('zombiebox')]
-					]
-				}
-			},
-			...require('eslint-config-interfaced/overrides/esm')
-		},
-		{
-			files: ['lib/**/*.js'],
+			extends: 'interfaced/externs',
 			rules: {
-				'import/no-unresolved': ['error', {ignore: ['^generated/']}]
+				'jsdoc/require-returns-check': 'off',
+			}
+		},
+		{
+			files: ['lib/**/*.js'],
+			extends: 'interfaced/esm',
+			settings: {
+				'import/resolver': 'zombiebox'
+			},
+			rules: {
+				'jsdoc/no-undefined-types': ['error', {
+					definedTypes: [
+						// See externs
+						'AndroidDeviceAPI',
+						'AndroidPlayerAPI'
+					]
+				}]
 			}
 		},
 		{
 			files: ['.eslintrc.js', 'index.js', 'tester/*.js'],
-			...require('eslint-config-interfaced/overrides/node')
-		},
-		{
-			files: ['.eslintrc.js', 'index.js', 'tester/*.js'],
+			extends: 'interfaced/node',
 			rules: {
-				'node/no-unsupported-features/es-builtins': ["error", { "version": ">=8.9" }],
-				'node/no-unsupported-features/es-syntax': ["error", { "version": ">=8.9" }],
-				'node/no-unsupported-features/node-builtins': ["error", { "version": ">=8.9" }]
+				'function-call-argument-newline': 'off'
 			}
 		}
 	]

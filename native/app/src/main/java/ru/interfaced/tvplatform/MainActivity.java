@@ -23,6 +23,23 @@ import org.json.JSONObject;
 import java.util.Arrays;
 
 
+class CustomWebViewClient extends android.webkit.WebViewClient {
+    private static String TAG = "CustomWebViewClient";
+
+    @Override
+    public void onScaleChanged(WebView view, float oldScale, float newScale) {
+        Log.d(TAG, "onScaleChanged " + oldScale + " " + newScale);
+
+        super.onScaleChanged(view, oldScale, newScale);
+
+        if (newScale != 1.0f) {
+            Log.d(TAG, "onScaleChanged, zooming out");
+            view.zoomOut();
+        }
+    }
+}
+
+
 public class MainActivity extends Activity {
     private WebView webView;
 
@@ -102,11 +119,8 @@ public class MainActivity extends Activity {
         webSettings.setAllowFileAccessFromFileURLs(BuildConfig.USE_BUNDLED_HTML);
         webSettings.setAllowUniversalAccessFromFileURLs(BuildConfig.USE_BUNDLED_HTML);
 
-        webView.setInitialScale(1);
+        webView.setInitialScale(100);
         webSettings.setMinimumFontSize(1);
-        webSettings.setLoadWithOverviewMode(true);
-        webSettings.setUseWideViewPort(true);
-        webSettings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.SINGLE_COLUMN);
         webSettings.setSupportZoom(false);
         webSettings.setDisplayZoomControls(false);
         webSettings.setBuiltInZoomControls(false);
@@ -114,7 +128,7 @@ public class MainActivity extends Activity {
         webView.setBackgroundColor(Color.TRANSPARENT);
 
         webView.clearCache(true);
-        webView.setWebViewClient(new WebViewClient());
+        webView.setWebViewClient(new CustomWebViewClient());
 
         webView.addJavascriptInterface(playerWebInterface, getString(R.string.player_interface));
         webView.addJavascriptInterface(deviceWebInterface, getString(R.string.device_interface));

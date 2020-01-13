@@ -115,8 +115,7 @@ class PlatformAndroid extends AbstractPlatform {
 		}
 
 		if (!config.versionCode && config.storeRelease) {
-			console.error(chalk.red('Version code is not set'));
-			return Promise.reject('No versionCode');
+			throw new Error('Version code is not set');
 		}
 
 		if (!config.appId) {
@@ -275,7 +274,7 @@ class PlatformAndroid extends AbstractPlatform {
 			depthLimit: 1,
 			filter: (filename) => path.basename(filename).startsWith('drawable')
 		})
-			.on('data', async(item) => {
+			.on('data', async (item) => {
 				const bannerPath = path.join(baseResourcesPath, item.path, 'banner.png');
 				if (await fse.exists(bannerPath)) {
 					promises.push(sharp(bannerPath)
@@ -306,7 +305,7 @@ class PlatformAndroid extends AbstractPlatform {
 
 		const capitalize = (string) => string.charAt(0).toUpperCase() + string.slice(1);
 
-		const runGradle = async(args) => {
+		const runGradle = async (args) => {
 			console.log(chalk.yellow('Running', `gradle ${args[0]}`));
 
 			await new Promise((resolve, reject) => {

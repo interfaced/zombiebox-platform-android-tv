@@ -14,9 +14,9 @@ class AndroidDeviceAPI {
 	/**
 	 * Hook to be declared
 	 * @param {string} event
-	 * @param {...?string} var_args
+	 * @param {...?string} args
 	 */
-	onEvent(event, var_args) {}
+	onEvent(event, args) {}
 
 	/**
 	 * @return {string}

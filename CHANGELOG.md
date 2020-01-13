@@ -1,7 +1,7 @@
 # Changelog
 
-## Planned
- * Playback rate, Aspect ratio and other fixes for 2.0.0 regression.
+## 3.1.0 (13.01.2020)
+* Update to ZombieBox 2.4.0
 
 ## 3.0.0 (10.07.2019)
 
