@@ -17,7 +17,7 @@ import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
-import android.support.annotation.Nullable;
+import androidx.annotation.Nullable;
 import android.text.format.Formatter;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -315,7 +315,7 @@ class DeviceWebInterface {
         }
 
         return "{}";
-    };
+    }
 
     @JavascriptInterface
     public void exit() {

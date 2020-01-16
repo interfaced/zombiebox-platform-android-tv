@@ -6,7 +6,7 @@ import android.content.res.Configuration;
 import android.graphics.Color;
 import android.media.AudioManager;
 import android.os.Bundle;
-import android.support.annotation.Nullable;
+import androidx.annotation.Nullable;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -14,7 +14,6 @@ import android.view.View;
 import android.webkit.ValueCallback;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
-import android.webkit.WebViewClient;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -58,7 +57,7 @@ public class MainActivity extends Activity {
         playerWebInterface = new PlayerWebInterface(this);
         deviceWebInterface = new DeviceWebInterface(this);
 
-        webView = (WebView)findViewById(R.id.webview);
+        webView = findViewById(R.id.webview);
         initWebView();
 
         if (BuildConfig.USE_BUNDLED_HTML) {
@@ -150,12 +149,8 @@ public class MainActivity extends Activity {
 
         final String call = String.format("%s && %s(%s, %s)", interfaceString, interfaceString, eventString, argumentsString);
 
-        webView.post(new Runnable() {
-            @Override
-            public void run() {
-//                Log.d(TAG, String.format("Evaluating JS: %s", call));
-                webView.evaluateJavascript(call, callback);
-            }
+        webView.post(() -> {
+            webView.evaluateJavascript(call, callback);
         });
     }
 
@@ -174,7 +169,7 @@ public class MainActivity extends Activity {
     public boolean dispatchGenericMotionEvent(MotionEvent event) {
         int action = event.getAction();
 
-        Integer mouseActions[] = {
+        Integer[] mouseActions = {
             MotionEvent.ACTION_MOVE,
             MotionEvent.ACTION_HOVER_MOVE,
             MotionEvent.ACTION_HOVER_ENTER,
@@ -183,8 +178,8 @@ public class MainActivity extends Activity {
 
         if (Arrays.asList(mouseActions).contains(action)) {
             deviceWebInterface.onMouseSuspicion();
-        };
+        }
 
         return false;
-    };
+    }
 }

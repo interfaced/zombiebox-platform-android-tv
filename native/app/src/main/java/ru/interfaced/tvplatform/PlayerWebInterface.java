@@ -3,8 +3,8 @@ package ru.interfaced.tvplatform;
 import android.app.Activity;
 import android.content.Context;
 import android.net.Uri;
-import android.support.annotation.IntRange;
-import android.support.annotation.Nullable;
+import androidx.annotation.IntRange;
+import androidx.annotation.Nullable;
 import android.util.Log;
 import android.view.SurfaceView;
 import android.view.TextureView;
@@ -15,31 +15,36 @@ import android.webkit.ValueCallback;
 import android.widget.RelativeLayout;
 
 import com.google.android.exoplayer2.ExoPlaybackException;
-import com.google.android.exoplayer2.ExoPlayerFactory;
-import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.Timeline;
-import com.google.android.exoplayer2.source.ExtractorMediaSource;
+import com.google.android.exoplayer2.audio.AudioListener;
+import com.google.android.exoplayer2.drm.DefaultDrmSessionManager;
+import com.google.android.exoplayer2.drm.FrameworkMediaDrm;
+import com.google.android.exoplayer2.drm.HttpMediaDrmCallback;
 import com.google.android.exoplayer2.source.MediaSource;
+import com.google.android.exoplayer2.source.MediaSourceFactory;
+import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.TrackGroupArray;
 import com.google.android.exoplayer2.source.dash.DashMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
+import com.google.android.exoplayer2.source.smoothstreaming.SsMediaSource;
 import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
 import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
-import com.google.android.exoplayer2.upstream.DataSource;
-import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
+import com.google.android.exoplayer2.upstream.DefaultHttpDataSourceFactory;
+import com.google.android.exoplayer2.upstream.HttpDataSource;
 import com.google.android.exoplayer2.util.Util;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.video.VideoListener;
 
 import org.json.JSONArray;
 import java.util.Locale;
+import java.util.UUID;
 
 
 class PlayerWebInterface implements
         Player.EventListener,
-        VideoListener {
+        VideoListener, AudioListener {
     private Context context;
     private AspectRatioFrameLayout videoContainer;
     private RelativeLayout viewport;
@@ -53,6 +58,8 @@ class PlayerWebInterface implements
     private boolean playbackStateBeforeSuspend;
 
     private Format desiredVideoFormat = null;
+    private DRMType drmType = DRMType.NONE;
+    private String drmLicenseServer;
 
     private static final String TAG = "PlayerWebInterface";
 
@@ -66,6 +73,9 @@ class PlayerWebInterface implements
         STALLED,
         READY,
         POSITION_DISCONTINUITY,
+        SEEK,
+        SEEK_PROCESSED,
+        VOLUME_CHANGED,
         ENDED
     }
 
@@ -77,8 +87,23 @@ class PlayerWebInterface implements
         RTMP
     }
 
+    private enum DRMType {
+        PLAYREADY("playready", C.PLAYREADY_UUID),
+        NONE("none", C.UUID_NIL);
+
+        private final String name;
+        private final UUID uuid;
+
+        DRMType(String name, UUID uuid) {
+            this.name = name;
+            this.uuid = uuid;
+        }
+
+        public String getName() { return name; }
+        public UUID getUUID() { return uuid; }
+    }
+
     private enum InterfaceError {
-        CANT_CREATE_VIDEO_OBJECT (1, "Can't create video object"),
         UNINITIALIZED (3, "Video is not initialized"),
         MEDIA_ERROR(5, "Media Error"),
         UNKNOWN (100, "Unknown error");
@@ -126,18 +151,18 @@ class PlayerWebInterface implements
 
     private enum VideoType {
         SURFACE_VIEW,
-        TEXTURE_VIEW;
+        TEXTURE_VIEW
     }
 
     PlayerWebInterface(Context aContext) {
         context = aContext;
         Activity mainActivity = (Activity) context;
 
-        viewport = (RelativeLayout) mainActivity.findViewById(R.id.viewport);
-        videoContainer = (AspectRatioFrameLayout) mainActivity.findViewById(R.id.videoContainer);
-        videoSurfaceView = (SurfaceView) mainActivity.findViewById(R.id.videoSufraceView);
-        videoTextureView = (TextureView) mainActivity.findViewById(R.id.videoTextureView);
-        shutterView = (View) mainActivity.findViewById(R.id.shutter);
+        viewport = mainActivity.findViewById(R.id.viewport);
+        videoContainer = mainActivity.findViewById(R.id.videoContainer);
+        videoSurfaceView = mainActivity.findViewById(R.id.videoSurfaceView);
+        videoTextureView = mainActivity.findViewById(R.id.videoTextureView);
+        shutterView = mainActivity.findViewById(R.id.shutter);
         uri = "";
     }
 
@@ -178,8 +203,7 @@ class PlayerWebInterface implements
         Log.e(TAG, "Fatal error " + interfaceError + ": " + message);
 
         if (player != null) {
-            player.stop();
-            player.seekToDefaultPosition();
+            player.stop(true);
             hideVideo();
         }
     }
@@ -231,35 +255,30 @@ class PlayerWebInterface implements
     }
 
     private void hideVideo() {
-        ((Activity)context).runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                Log.d(TAG, "Hiding video");
-                shutterView.setVisibility(View.VISIBLE);
-            }
+        ((Activity)context).runOnUiThread(() -> {
+            Log.d(TAG, "Hiding video");
+            shutterView.setVisibility(View.VISIBLE);
         });
     }
 
     private void showVideo() {
-        ((Activity)context).runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                Log.d(TAG, "Showing video");
-                shutterView.setVisibility(View.INVISIBLE);
-            }
+        ((Activity)context).runOnUiThread(() -> {
+            Log.d(TAG, "Showing video");
+            shutterView.setVisibility(View.INVISIBLE);
         });
     }
 
     @JavascriptInterface
     public void create() {
         if (player != null) {
-            dispatchError(InterfaceError.CANT_CREATE_VIDEO_OBJECT);
-            return;
+            throw new Error("Can't create more than one video player object");
         }
 
-        player = ExoPlayerFactory.newSimpleInstance(context);
+        player = new SimpleExoPlayer.Builder(context)
+            .build();
         player.addListener(this);
         player.addVideoListener(this);
+        player.addAudioListener(this);
         player.setPlayWhenReady(false);
         switchToSurfaceView();
         hideVideo();
@@ -321,13 +340,10 @@ class PlayerWebInterface implements
         player.setVideoSurfaceView(videoSurfaceView);
         currentVideoView = videoSurfaceView;
 
-        ((Activity) context).runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                videoSurfaceView.setVisibility(View.VISIBLE);
-                videoTextureView.setVisibility(View.GONE);
-                videoContainer.setRotation(0);
-            }
+        ((Activity) context).runOnUiThread(() -> {
+            videoSurfaceView.setVisibility(View.VISIBLE);
+            videoTextureView.setVisibility(View.GONE);
+            videoContainer.setRotation(0);
         });
     }
 
@@ -342,12 +358,9 @@ class PlayerWebInterface implements
         player.setVideoTextureView(videoTextureView);
         currentVideoView = videoTextureView;
 
-        ((Activity)context).runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                videoTextureView.setVisibility(View.VISIBLE);
-                videoSurfaceView.setVisibility(View.GONE);
-            }
+        ((Activity)context).runOnUiThread(() -> {
+            videoTextureView.setVisibility(View.VISIBLE);
+            videoSurfaceView.setVisibility(View.GONE);
         });
     }
 
@@ -366,6 +379,21 @@ class PlayerWebInterface implements
     }
 
     @JavascriptInterface
+    public void setDRM(String drmString, @Nullable String licenseServer) {
+        if (!assertPlayer()) {
+            return;
+        }
+
+        try {
+            drmType = DRMType.valueOf(drmString.toUpperCase(Locale.US));
+            drmLicenseServer = licenseServer;
+        } catch (IllegalArgumentException e) {
+            Log.w(TAG, "Failed to parse drm type \"" + drmString);
+            drmType = DRMType.NONE;
+        }
+    }
+
+    @JavascriptInterface
     public void setVideoURI(String uriString) {
         if (!assertPlayer()) {
             return;
@@ -374,7 +402,7 @@ class PlayerWebInterface implements
         Log.d(TAG, "Playing " + uriString);
 
         final Uri uri = Uri.parse(uriString);
-        final MediaSource source = generateMediaSource(uri, desiredVideoFormat);
+        final MediaSource source = generateMediaSource(uri, desiredVideoFormat, drmType, drmLicenseServer);
 
         player.prepare(source);
         this.uri = uriString;
@@ -385,11 +413,11 @@ class PlayerWebInterface implements
         return uri;
     }
 
-    private MediaSource generateMediaSource(Uri uri, Format format) {
+    private MediaSource generateMediaSource(Uri uri, Format format, DRMType drm, String licenseServer) {
         Log.d(TAG, "Generating media source for " + (format == null ? "automatic" : format));
 
-        String userAgent = Util.getUserAgent(context, "ru.interfaced.ok");
-        DataSource.Factory dataSourceFactory = new DefaultDataSourceFactory(context, userAgent);
+        String userAgent = Util.getUserAgent(context, BuildConfig.APPLICATION_ID);
+        HttpDataSource.Factory dataSourceFactory = new DefaultHttpDataSourceFactory(userAgent);
 
         if (format == null || format == Format.AUTO) {
             String uriString = uri.toString().toLowerCase();
@@ -408,20 +436,42 @@ class PlayerWebInterface implements
             Log.d(TAG, "Guessed stream format to be " + format);
         }
 
+        DefaultDrmSessionManager drmManager = null;
+        if (drm != DRMType.NONE) {
+            HttpMediaDrmCallback drmCallback = new HttpMediaDrmCallback(licenseServer, dataSourceFactory);
+            drmManager = new DefaultDrmSessionManager.Builder()
+                .setUuidAndExoMediaDrmProvider(drm.getUUID(), FrameworkMediaDrm.DEFAULT_PROVIDER)
+                .build(drmCallback);
+        }
+
         switch (format) {
             case DASH:
-                return new DashMediaSource.Factory(dataSourceFactory)
-                        .createMediaSource(uri);
+                DashMediaSource.Factory dashFactory = new DashMediaSource.Factory(dataSourceFactory);
+                if (drmManager != null) {
+                    dashFactory.setDrmSessionManager(drmManager);
+                }
+                return dashFactory.createMediaSource(uri);
             case HLS:
-                return new HlsMediaSource.Factory(dataSourceFactory)
-                        .createMediaSource(uri);
-            case RTMP:
+                HlsMediaSource.Factory hlsFactory = new HlsMediaSource.Factory(dataSourceFactory);
+                if (drmManager != null) {
+                    hlsFactory.setDrmSessionManager(drmManager);
+                }
+                return hlsFactory.createMediaSource(uri);
             case SS:
+                SsMediaSource.Factory ssFactory = new SsMediaSource.Factory(dataSourceFactory);
+                if (drmManager != null) {
+                    ssFactory.setDrmSessionManager(drmManager);
+                }
+                return ssFactory.createMediaSource(uri);
+            case RTMP:
                 Log.e(TAG, "Unsupported format " + format); // TODO
             case AUTO:
             default: {
-                return new ExtractorMediaSource.Factory(dataSourceFactory)
-                        .createMediaSource(uri);
+                ProgressiveMediaSource.Factory factory = new ProgressiveMediaSource.Factory(dataSourceFactory);
+                if (drmManager != null) {
+                    factory.setDrmSessionManager(drmManager);
+                }
+                return factory.createMediaSource(uri);
             }
         }
     }
@@ -450,8 +500,7 @@ class PlayerWebInterface implements
             return;
         }
 
-        player.stop();
-        player.seekToDefaultPosition();
+        player.stop(true);
         hideVideo();
     }
 
@@ -477,6 +526,7 @@ class PlayerWebInterface implements
 
     @JavascriptInterface
     public boolean isLiveStream() {
+        // TODO: Looks like ExoPlayer 2.11 introduced a better method, look into it
         return player.isCurrentWindowDynamic() || player.getDuration() == C.TIME_UNSET;
     }
 
@@ -513,12 +563,12 @@ class PlayerWebInterface implements
     // TODO: verify this volume api works nicely with android AudioManager
     @JavascriptInterface
     public @IntRange(from = 0, to = 100) int getVolume() {
-        return (int) player.getVolume();
+        return (int) (player.getVolume() * 100);
     }
 
     @JavascriptInterface
     public void setVolume(@IntRange(from = 0, to = 100) int percent) {
-        player.setVolume(percent);
+        player.setVolume((float) percent / 100);
     }
 
     @JavascriptInterface
@@ -542,6 +592,10 @@ class PlayerWebInterface implements
         player = null;
         currentVideoView = null;
 
+        desiredVideoFormat = null;
+        drmType = DRMType.NONE;
+        drmLicenseServer = null;
+
         dispatchEvent(Event.DESTROYED);
     }
 
@@ -553,15 +607,12 @@ class PlayerWebInterface implements
 
         Log.d(TAG, "setArea " + x + " " + y + " " + width + " " + height);
 
-        ((Activity)context).runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                ViewGroup.LayoutParams surfaceParams = viewport.getLayoutParams();
-                surfaceParams.width = width;
-                surfaceParams.height = height;
-                ((ViewGroup.MarginLayoutParams)surfaceParams).setMargins(x, y, 0, 0);
-                viewport.requestLayout();
-            }
+        ((Activity)context).runOnUiThread(() -> {
+            ViewGroup.LayoutParams surfaceParams = viewport.getLayoutParams();
+            surfaceParams.width = width;
+            surfaceParams.height = height;
+            ((ViewGroup.MarginLayoutParams)surfaceParams).setMargins(x, y, 0, 0);
+            viewport.requestLayout();
         });
     }
 
@@ -609,16 +660,13 @@ class PlayerWebInterface implements
         );
 
         final Orientation finalOrientation = orientation;
-        ((Activity)context).runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                Log.d(TAG, "Rotating to " + finalOrientation.angle + " with a scale of " + scale);
+        ((Activity)context).runOnUiThread(() -> {
+            Log.d(TAG, "Rotating to " + finalOrientation.angle + " with a scale of " + scale);
 
-                videoContainer.setRotation(finalOrientation.angle);
-                videoContainer.setScaleX(scale);
-                videoContainer.setScaleY(scale);
-                videoContainer.invalidate();
-            }
+            videoContainer.setRotation(finalOrientation.angle);
+            videoContainer.setScaleX(scale);
+            videoContainer.setScaleY(scale);
+            videoContainer.invalidate();
         });
     }
 
@@ -652,12 +700,7 @@ class PlayerWebInterface implements
         }
 
         final int finalMode = mode.mode;
-        ((Activity)context).runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                videoContainer.setResizeMode(finalMode);
-            }
-        });
+        ((Activity)context).runOnUiThread(() -> videoContainer.setResizeMode(finalMode));
     }
 
     @JavascriptInterface
@@ -668,21 +711,16 @@ class PlayerWebInterface implements
 
         Log.d(TAG, "setAspectRatio " + ratio);
 
-        ((Activity)context).runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                videoContainer.setAspectRatio(ratio);
-            }
-        });
+        ((Activity)context).runOnUiThread(() -> videoContainer.setAspectRatio(ratio));
     }
 
     @Override
     public void onVideoSizeChanged(final int width, final int height, int unAppliedRotationDegrees, final float pixelWidthHeightRatio) {
         Log.d(TAG, "onVideoSizeChanged " +
-                width + " " +
-                height + " " +
-                unAppliedRotationDegrees + " " +
-                pixelWidthHeightRatio
+            width + " " +
+            height + " " +
+            unAppliedRotationDegrees + " " +
+            pixelWidthHeightRatio
         );
 
         final int containerWidth = viewport.getWidth();
@@ -698,19 +736,11 @@ class PlayerWebInterface implements
         final float positionCorrectionX = containerWidth / 2 - scale * width / 2;
         final float positionCorrectionY = containerHeight / 2 - scale * height / 2;
 
-        ((Activity)context).runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                videoContainer.setAspectRatio(width * pixelWidthHeightRatio / height);
-                videoContainer.setX(positionCorrectionX);
-                videoContainer.setY(positionCorrectionY);
-            }
+        ((Activity)context).runOnUiThread(() -> {
+            videoContainer.setAspectRatio(width * pixelWidthHeightRatio / height);
+            videoContainer.setX(positionCorrectionX);
+            videoContainer.setY(positionCorrectionY);
         });
-    }
-
-    @Override
-    public void onSurfaceSizeChanged(int width, int height) {
-        Log.d(TAG, "Surface size changed to" + width + "x" + height);
     }
 
     @Override
@@ -721,7 +751,7 @@ class PlayerWebInterface implements
     }
 
     @Override
-    public void onTimelineChanged(Timeline timeline, @Nullable Object manifest, int reason) {
+    public void onTimelineChanged(Timeline timeline, int reason) {
         if (!timeline.isEmpty()) {
             dispatchEvent(Event.TIMELINE_CHANGED);
             Log.v(TAG, "onTimelineChanged; reason: " + reason);
@@ -736,12 +766,12 @@ class PlayerWebInterface implements
 
     @Override
     public void onLoadingChanged(boolean isLoading) {
-//        Log.v(TAG, "onLoadingChanged " + isLoading);
+        Log.v(TAG, "onLoadingChanged " + isLoading);
     }
 
     @Override
     public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
-        Log.d(TAG, "onPlayerStateChange " + playbackState);
+        Log.d(TAG, "onPlayerStateChange " + playbackState + " " + playWhenReady);
 
         switch (playbackState) {
             case Player.STATE_IDLE: {
@@ -766,12 +796,6 @@ class PlayerWebInterface implements
     }
 
     @Override
-    public void onRepeatModeChanged(int repeatMode) {}
-
-    @Override
-    public void onShuffleModeEnabledChanged(boolean shuffleModeEnabled) {}
-
-    @Override
     public void onPlayerError(ExoPlaybackException error) {
         Log.e(TAG, "onError: " + error.getMessage() + " cause: " + error.getCause());
         onFatalError(InterfaceError.MEDIA_ERROR, error);
@@ -782,13 +806,27 @@ class PlayerWebInterface implements
     public void onPositionDiscontinuity(int reason) {
         Log.v(TAG, "onPositionDiscontinuity; reason: " + reason);
         dispatchEvent(Event.POSITION_DISCONTINUITY);
+
+        if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+            dispatchEvent(Event.SEEK);
+        }
     }
 
     @Override
-    public void onPlaybackParametersChanged(PlaybackParameters playbackParameters) {
-        Log.v(TAG, "PlaybackParametersChanged");
+    public void onSeekProcessed() {
+        Log.v(TAG, "onSeekProcessed");
+        dispatchEvent(Event.SEEK_PROCESSED);
     }
 
     @Override
-    public void onSeekProcessed() {}
+    public void onIsPlayingChanged(boolean isPlaying) {
+        Log.v(TAG, "onIsPlayingChanged, playing: " + isPlaying);
+    }
+
+    @Override
+    public void onVolumeChanged(float volume) {
+        JSONArray params = new JSONArray();
+        params.put((int) volume * 100);
+        dispatchEvent(Event.VOLUME_CHANGED, params);
+    }
 }

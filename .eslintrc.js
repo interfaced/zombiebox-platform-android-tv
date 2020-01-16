@@ -1,3 +1,15 @@
+const currentYear = (new Date).getFullYear();
+const copyrightHeader = [
+	'',
+	' * This file is part of the ZombieBox package.',
+	' *',
+	` * Copyright © 2015-${currentYear}, Interfaced`,
+	' *',
+	' * For the full copyright and license information, please view the LICENSE',
+	' * file that was distributed with this source code.',
+	' '
+];
+
 module.exports = {
 	extends: 'interfaced',
 	overrides: [
@@ -6,11 +18,15 @@ module.exports = {
 			extends: 'interfaced/externs',
 			rules: {
 				'jsdoc/require-returns-check': 'off',
+				'header/header': ['error', 'block', copyrightHeader]
 			}
 		},
 		{
 			files: ['lib/**/*.js'],
 			extends: 'interfaced/esm',
+			plugins: [
+				'header'
+			],
 			settings: {
 				'import/resolver': 'zombiebox'
 			},
@@ -21,7 +37,8 @@ module.exports = {
 						'AndroidDeviceAPI',
 						'AndroidPlayerAPI'
 					]
-				}]
+				}],
+				'header/header': ['error', 'block', copyrightHeader]
 			}
 		},
 		{

@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.0 (16.01.2020)
+* Implement `StatefulVideo` model with PlayReady DRM support.
+* Update ExoPlayer to 2.11.1 and other native components to their newest versions.
+
 ## 3.1.0 (13.01.2020)
 * Update to ZombieBox 2.4.0
 
