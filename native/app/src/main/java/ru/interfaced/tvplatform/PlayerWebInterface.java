@@ -15,6 +15,7 @@ import android.webkit.ValueCallback;
 import android.widget.RelativeLayout;
 
 import com.google.android.exoplayer2.ExoPlaybackException;
+import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.Timeline;
@@ -23,12 +24,13 @@ import com.google.android.exoplayer2.drm.DefaultDrmSessionManager;
 import com.google.android.exoplayer2.drm.FrameworkMediaDrm;
 import com.google.android.exoplayer2.drm.HttpMediaDrmCallback;
 import com.google.android.exoplayer2.source.MediaSource;
-import com.google.android.exoplayer2.source.MediaSourceFactory;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.TrackGroupArray;
 import com.google.android.exoplayer2.source.dash.DashMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.source.smoothstreaming.SsMediaSource;
+import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
+import com.google.android.exoplayer2.trackselection.MappingTrackSelector;
 import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
 import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSourceFactory;
@@ -38,6 +40,8 @@ import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.video.VideoListener;
 
 import org.json.JSONArray;
+import org.json.JSONException;
+
 import java.util.Locale;
 import java.util.UUID;
 
@@ -54,12 +58,15 @@ class PlayerWebInterface implements
     private View shutterView;
     private String uri;
 
+    DefaultTrackSelector trackSelector;
     private SimpleExoPlayer player;
     private boolean playbackStateBeforeSuspend;
 
     private Format desiredVideoFormat = null;
     private DRMType drmType = DRMType.NONE;
     private String drmLicenseServer;
+
+    private PlaybackParameters lastKnownPlaybackParameters = null;
 
     private static final String TAG = "PlayerWebInterface";
 
@@ -76,6 +83,7 @@ class PlayerWebInterface implements
         SEEK,
         SEEK_PROCESSED,
         VOLUME_CHANGED,
+        PLAYBACK_RATE_CHANGED,
         ENDED
     }
 
@@ -106,6 +114,7 @@ class PlayerWebInterface implements
     private enum InterfaceError {
         UNINITIALIZED (3, "Video is not initialized"),
         MEDIA_ERROR(5, "Media Error"),
+        NO_PLAYABLE_TRACKS(6, "No playable tracks"),
         UNKNOWN (100, "Unknown error");
 
         private final int code;
@@ -274,7 +283,10 @@ class PlayerWebInterface implements
             throw new Error("Can't create more than one video player object");
         }
 
+        trackSelector = new DefaultTrackSelector(context);
+
         player = new SimpleExoPlayer.Builder(context)
+            .setTrackSelector(trackSelector)
             .build();
         player.addListener(this);
         player.addVideoListener(this);
@@ -550,14 +562,30 @@ class PlayerWebInterface implements
 
     @JavascriptInterface
     public float getPlaybackRate() {
-        // TODO
-        return 1;
+        if (!assertPlayer()) {
+            return 1f;
+        }
+
+        PlaybackParameters parameters = player.getPlaybackParameters();
+        return parameters.speed;
     }
 
     @JavascriptInterface
     public void setPlaybackRate(float rate) {
-        // TODO
-        // https://github.com/google/ExoPlayer/issues/26#issuecomment-288835803
+        if (!assertPlayer()) {
+            return;
+        }
+
+        PlaybackParameters currentParameters = player.getPlaybackParameters();
+        PlaybackParameters newParameters = new PlaybackParameters(
+            rate,
+            currentParameters.pitch,
+            currentParameters.skipSilence
+        );
+
+        if (!currentParameters.equals(newParameters)) {
+            player.setPlaybackParameters(newParameters);
+        }
     }
 
     // TODO: verify this volume api works nicely with android AudioManager
@@ -762,6 +790,25 @@ class PlayerWebInterface implements
     public void onTracksChanged(TrackGroupArray trackGroups, TrackSelectionArray trackSelections) {
         dispatchEvent(Event.TRACKS_CHANGED);
         Log.v(TAG, "onTracksChanged");
+
+        MappingTrackSelector.MappedTrackInfo mappedTrackInfo = trackSelector.getCurrentMappedTrackInfo();
+
+        if (mappedTrackInfo == null) {
+            return;
+        }
+
+        int videoSupport = mappedTrackInfo.getTypeSupport(C.TRACK_TYPE_VIDEO);
+        int audioSupport = mappedTrackInfo.getTypeSupport(C.TRACK_TYPE_AUDIO);
+        int textSupport = mappedTrackInfo.getTypeSupport(C.TRACK_TYPE_TEXT);
+
+        Log.d(TAG, String.format("Tracks support: video: %d, audio: %d, text: %d", videoSupport, audioSupport, textSupport));
+
+        if (
+            videoSupport < MappingTrackSelector.MappedTrackInfo.RENDERER_SUPPORT_PLAYABLE_TRACKS &&
+            audioSupport < MappingTrackSelector.MappedTrackInfo.RENDERER_SUPPORT_PLAYABLE_TRACKS
+        ) {
+            dispatchError(InterfaceError.NO_PLAYABLE_TRACKS);
+        }
     }
 
     @Override
@@ -821,6 +868,21 @@ class PlayerWebInterface implements
     @Override
     public void onIsPlayingChanged(boolean isPlaying) {
         Log.v(TAG, "onIsPlayingChanged, playing: " + isPlaying);
+    }
+
+    @Override
+    public void onPlaybackParametersChanged(PlaybackParameters playbackParameters) {
+        if (lastKnownPlaybackParameters == null || lastKnownPlaybackParameters.speed != playbackParameters.speed) {
+            JSONArray eventParams = new JSONArray();
+            try {
+                eventParams.put(playbackParameters.speed);
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+            dispatchEvent(Event.PLAYBACK_RATE_CHANGED, eventParams);
+        }
+
+        lastKnownPlaybackParameters = playbackParameters;
     }
 
     @Override

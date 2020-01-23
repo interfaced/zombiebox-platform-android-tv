@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.0 (23.01.2020)
+* Implement `setPlaybackRate`, `getPlaybackRate` and `EVENT_RATE_CHANGE` on `StatefulVideo`.
+* Fail to `ERROR` state when no audio and video tracks can be played in current media file, particularly when they are DRM protected and proper `DRMClient` was not attached. 
+
 ## 3.1.0 (16.01.2020)
 * Implement `StatefulVideo` model with PlayReady DRM support.
 * Update ExoPlayer to 2.11.1 and other native components to their newest versions.

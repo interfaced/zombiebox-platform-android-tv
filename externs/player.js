@@ -104,6 +104,16 @@ class AndroidPlayerAPI {
 	setMuted(mute) {}
 
 	/**
+	 * @return {number} - float
+	 */
+	getPlaybackRate() {}
+
+	/**
+	 * @param {number} rate float
+	 */
+	setPlaybackRate(rate) {}
+
+	/**
 	 * @param {number} x Integer
 	 * @param {number} y Integer
 	 * @param {number} width Integer
