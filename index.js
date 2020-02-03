@@ -3,8 +3,9 @@ const fse = require('fs-extra');
 const klaw = require('klaw');
 const path = require('path');
 const sharp = require('sharp');
-const chalk = require('chalk');
-const {AbstractPlatform, Application} = require('zombiebox');
+const {AbstractPlatform, Application, logger: zbLogger} = require('zombiebox');
+
+const logger = zbLogger.createChild('Android');
 
 
 /**
@@ -76,7 +77,7 @@ class PlatformAndroid extends AbstractPlatform {
 	/**
 	 * @override
 	 */
-	async buildApp(application, distDir) {
+	async pack(application, distDir) {
 		/**
 		 * @param {number} len
 		 * @return {string}
@@ -92,26 +93,26 @@ class PlatformAndroid extends AbstractPlatform {
 		const buildDir = path.join(distDir, 'src');
 
 		if (config.storeRelease) {
-			console.warn(chalk.yellow('Building unsigned release apk. It will not install unless signed.'));
+			logger.warn('Building unsigned release apk. It will not install unless signed.');
 
 			if (config.webViewDebug) {
-				console.warn(chalk.red('Building release with debug enabled'));
+				logger.warn('Building release with debug enabled');
 			}
 		}
 
 		if (!config.namespace) {
 			config.namespace = buildConfig.project.name;
-			console.warn(chalk.yellow(`Namespace not set, using "${config.namespace}"`));
+			logger.warn(`Namespace not set, using "${config.namespace}"`);
 		}
 
 		if (config.namespace.startsWith('test')) {
 			config.namespace = createRandomString();
-			console.warn(chalk.yellow(`Namespace could not start with "test", using ${config.namespace}`));
+			logger.warn(`Namespace could not start with "test", using ${config.namespace}`);
 		}
 
 		if (!config.versionName) {
 			config.versionName = application.getAppVersion();
-			console.warn(chalk.yellow(`Version name not set, using "${config.versionName}"`));
+			logger.warn(`Version name not set, using "${config.versionName}"`);
 		}
 
 		if (!config.versionCode && config.storeRelease) {
@@ -120,25 +121,24 @@ class PlatformAndroid extends AbstractPlatform {
 
 		if (!config.appId) {
 			if (config.storeRelease) {
-				console.error(chalk.red(`Application id not set`));
-				return Promise.reject();
+				throw new Error(`Application id is required for store release`);
 			}
 
 			config.appId = `com.zombiebox.${config.namespace}.${createRandomString()}`;
-			console.warn(chalk.yellow(`Application id not set, using "${config.appId}"`));
+			logger.warn(`Application id not set, using "${config.appId}"`);
 		}
 
-
+		logger.debug(`Cleaning ${buildDir}`);
 		await fse.emptyDir(buildDir);
 		await this._cloneSources(buildDir);
 		await this._applyBuildConfig(config, buildDir);
 		await this._copyResources(application, config, buildDir);
 		await this._markDebugBuild(config, buildDir);
-		const zbBuildWarnings = await this._compileZbApplication(application, distDir, config, buildDir);
+		await this._copyZbApplication(config, distDir, buildDir);
 		await this._compileApk(config, buildDir, config.namespace);
-		await this._copyApk(config, buildDir, distDir);
+		const apkPath = await this._copyApk(config, buildDir, distDir);
 
-		return zbBuildWarnings;
+		logger.output(`apk assembled: ${apkPath}`);
 	}
 
 	/**
@@ -178,7 +178,9 @@ class PlatformAndroid extends AbstractPlatform {
 			}
 		}
 
-		return `${config.namespace} {\n\t${properties.join('\n\t')}\n}`;
+		const flavor = `${config.namespace} {\n\t${properties.join('\n\t')}\n}`;
+		logger.debug(`Application flavor: \n${flavor}`);
+		return flavor;
 	}
 
 	/**
@@ -206,7 +208,7 @@ class PlatformAndroid extends AbstractPlatform {
 	 */
 	async _copyResources(application, config, buildDir) {
 		if (!config.resPath) {
-			console.warn(chalk.yellow('No resources set, will use default zb resources'));
+			logger.warn('No resources set, will use default zb resources');
 			return;
 		}
 
@@ -219,7 +221,7 @@ class PlatformAndroid extends AbstractPlatform {
 		const bannerPath = path.join(resPath, 'drawable', 'banner.png');
 
 		if (!await fse.pathExists(bannerPath)) {
-			console.warn(chalk.yellow('Banner image is not set. Will fall back to zb image'));
+			logger.warn('Banner image is not set. Will fall back to zb image');
 
 			const fallbackBanner = path.join(buildDir, 'app', 'src', 'main', 'res', 'drawable', 'banner.png');
 			const targetBannerPath = path.join(targetResPath, 'drawable', 'banner.png');
@@ -228,27 +230,19 @@ class PlatformAndroid extends AbstractPlatform {
 	}
 
 	/**
-	 * @param {Application} application
-	 * @param {string} distDir
 	 * @param {Object} config
+	 * @param {string} distDir
 	 * @param {string} buildDir
 	 * @return {Promise}
 	 * @protected
 	 */
-	async _compileZbApplication(application, distDir, config, buildDir) {
-		let zbAppPath;
+	async _copyZbApplication(config, distDir, buildDir) {
 		if (config.useBundledHTML) {
-			zbAppPath = path.join(buildDir, 'app', 'src', config.namespace, 'assets', 'html', 'index.html');
-		} else {
-			zbAppPath = path.join(buildDir, 'index.html');
+			const zbAppPath = path.join(distDir, 'index.html');
+			const distAppPath = path.join(buildDir, 'app', 'src', config.namespace, 'assets', 'html', 'index.html');
+			await fse.ensureDir(path.dirname(distAppPath));
+			await fse.copy(zbAppPath, distAppPath);
 		}
-
-		const buildHelper = application.getBuildHelper();
-
-		await fse.ensureDir(path.dirname(zbAppPath));
-		const warnings = await buildHelper.writeIndexHTML(zbAppPath);
-		await buildHelper.copyStaticFiles(distDir);
-		return warnings;
 	}
 
 	/**
@@ -263,6 +257,7 @@ class PlatformAndroid extends AbstractPlatform {
 			return;
 		}
 
+		logger.verbose(`Applying debug overlay to app icon`);
 		const overlay = path.join(buildDir, 'app', 'src', 'main', 'res', 'drawable', 'debug.png');
 		const baseResourcesPath = path.join(buildDir, 'app', 'src', config.namespace, 'res');
 
@@ -301,12 +296,12 @@ class PlatformAndroid extends AbstractPlatform {
 
 		const buildType = config.storeRelease ? 'Release' : 'Debug';
 
-		console.log(chalk.green(`Compiling ${flavor} ${buildType} apk`));
+		logger.info(`Compiling ${flavor} ${buildType} apk`);
 
 		const capitalize = (string) => string.charAt(0).toUpperCase() + string.slice(1);
 
 		const runGradle = async (args) => {
-			console.log(chalk.yellow('Running', `gradle ${args[0]}`));
+			logger.debug(`Running gradle ${args[0]}`);
 
 			await new Promise((resolve, reject) => {
 				const gradleProcess = childProcess.execFile(
@@ -318,7 +313,9 @@ class PlatformAndroid extends AbstractPlatform {
 					(error) => error ? reject(error) : resolve()
 				);
 
-				gradleProcess.stdout.pipe(process.stdout);
+				if (zbLogger.levels[logger.level] >= zbLogger.levels.verbose) {
+					gradleProcess.stdout.pipe(process.stdout);
+				}
 				gradleProcess.stderr.pipe(process.stderr);
 			});
 		};
@@ -331,7 +328,7 @@ class PlatformAndroid extends AbstractPlatform {
 	 * @param {Object} config
 	 * @param {string} buildDir
 	 * @param {string} distDir
-	 * @return {Promise}
+	 * @return {Promise<string>}
 	 * @protected
 	 */
 	async _copyApk(config, buildDir, distDir) {
@@ -355,8 +352,10 @@ class PlatformAndroid extends AbstractPlatform {
 
 		if (config.storeRelease && await fse.exists(releaseBuild)) {
 			await fse.copy(releaseBuild, releaseTarget);
+			return releaseTarget;
 		} else if (await fse.exists(debugBuild)) {
 			await fse.copy(debugBuild, debugTarget);
+			return debugTarget;
 		}
 	}
 }
