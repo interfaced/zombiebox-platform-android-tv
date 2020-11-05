@@ -237,12 +237,18 @@ class PlatformAndroid extends AbstractPlatform {
 	 * @protected
 	 */
 	async _copyZbApplication(config, distDir, buildDir) {
-		if (config.useBundledHTML) {
-			const zbAppPath = path.join(distDir, 'index.html');
-			const distAppPath = path.join(buildDir, 'app', 'src', config.namespace, 'assets', 'html', 'index.html');
-			await fse.ensureDir(path.dirname(distAppPath));
-			await fse.copy(zbAppPath, distAppPath);
+		if (!config.useBundledHTML) {
+			return;
 		}
+		const targetPath = path.join(buildDir, 'app', 'src', config.namespace, 'assets', 'html');
+
+		const files = (await fse.readdir(distDir))
+			.map((file) => path.join(distDir, file))
+			.filter((file) => file !== buildDir);
+
+		logger.verbose(`Copying: ${files.join(', ')} to ${targetPath}`);
+
+		await Promise.all(files.map((file) => fse.copy(file, path.join(targetPath, path.basename(file)))));
 	}
 
 	/**
@@ -262,7 +268,9 @@ class PlatformAndroid extends AbstractPlatform {
 		const baseResourcesPath = path.join(buildDir, 'app', 'src', config.namespace, 'res');
 
 		let resolvePrimer;
-		const primer = new Promise((resolve) => (resolvePrimer = resolve));
+		const primer = new Promise((resolve) => {
+			resolvePrimer = resolve;
+		});
 		const promises = [primer];
 
 		klaw(baseResourcesPath, {

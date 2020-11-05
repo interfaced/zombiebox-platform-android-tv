@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.2.3 (05.11.2020)
+* Fix application resources not being copied to build when `useBundledHtml` set to true and resources are not inlined.
+* Implement `IStatefulVideo.getEngine` method
+
 ## 3.2.2 (03.02.2020)
 * Support ZombieBox 2.6
 * Better logging and output
